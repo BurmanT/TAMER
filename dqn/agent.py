@@ -22,7 +22,7 @@ from dqn.replay import ReplayBuffer, HumanTransition, Transition
 from datetime import datetime
 
 LOGS_DIR = Path(__file__).parent.joinpath('logs')
-
+MODELS_DIR = Path(__file__).parent.joinpath('saved_models')
 
 class QNetwork(nn.Module):
     def __init__(self, input_size, output_size):
@@ -69,6 +69,7 @@ class DQNAgent:
         buffer_size,
         ts_len,
         logs_dir=LOGS_DIR,
+        models_dir=MODELS_DIR,  # output directory for models
         q_model_to_load=None,  # filename of pretrained Q model
         h_model_to_load=None,  # filename of pretrained H model
         gif_name="agent.gif",
@@ -107,6 +108,7 @@ class DQNAgent:
         self.batch_size = batch_size
         self.target_update_interval = target_update_interval
         self.logs_dir = logs_dir
+        self.models_dir = models_dir
         self.uuid = uuid.uuid4()
         self.ts_len = ts_len
         self.gif_name = gif_name
@@ -162,6 +164,8 @@ class DQNAgent:
         # episode log path
         episode_log_path = os.path.join(
             self.logs_dir, "episode", f'{self.uuid}.csv')
+        self.gif_log_path = os.path.join(
+            self.logs_dir, "gifs", f'{self.uuid}.gif')
 
         # Logger
         self.logger = Logger(episode_log_path, tamer_log_path, log_csv=True)
@@ -290,19 +294,22 @@ class DQNAgent:
             self.disp.close()
         if q_model_file_to_save is not None:
             print(f'\nSaving Q Model to {q_model_file_to_save}')
-            self.Q.save_model(q_model_file_to_save)
+            q_model_path = self.models_dir.joinpath(q_model_file_to_save)
+            self.Q.save_model(q_model_path)
 
         if h_model_file_to_save is not None:
             print(f'\nSaving H Model to {h_model_file_to_save}')
-            self.H.save_model(h_model_file_to_save)
+            h_model_path = self.models_dir.joinpath(h_model_file_to_save)
+            self.H.save_model(h_model_path)
 
         print("\nSaving logs to database...")
         try:
             self.play(n_episodes=1, render=False,
                       save_gif=True, gif_name=self.gif_name)
-            self.logger.log_gif(self.gif_name)
-            self.logger.log_experiment(name=name, date=datetime.today().strftime(
-                '%Y-%m-%d'), algorithm="DQN-TAMER" if self.tamer else "DQN")
+            # CODE BELOW IS TO SAVE LOGS TO MONGODB DATABASE
+            #self.logger.log_gif(self.gif_name)
+            #self.logger.log_experiment(name=name, date=datetime.today().strftime(
+            #    '%Y-%m-%d'), algorithm="DQN-TAMER" if self.tamer else "DQN")
 
         except Exception as e:
             print(f"Exception: {e}. Failed to save logs to database")
@@ -411,7 +418,7 @@ class DQNAgent:
 
         # only saves gif of the last run
         if save_gif:
-            imageio.mimsave(gif_name, frames, fps=30, loop=0)
+            imageio.mimsave(self.gif_log_path, frames, fps=30, loop=0)
         return ep_rewards
 
     def evaluate(self, n_episodes=100):

@@ -23,17 +23,17 @@ lunar_params = {
     "env": gym.make("LunarLander-v3", continuous=False, gravity=-10.0,
                     enable_wind=False, wind_power=15.0, turbulence_power=1.5, render_mode="rgb_array"),
     "action_map": {0: "none", 1: "right engine", 2: "main engine", 3: "left engine"},
-    "max_steps": 500,
-    "discount_factor": 0.97,
+    "max_steps": 1000,
+    "discount_factor": 0.99,
     "epsilon": 1,
     "min_epsilon": 0,
     "learning_rate": 0.001,
     "alpha_h": 1,
     "alpha_q": 1,
     "alpha_h_decay": 0.9999,
-    "batch_size": 64,
+    "batch_size": 16,
     "target_update_interval": 20,
-    "buffer_size": 3000,
+    "buffer_size": 10000,
 }
 
 taxi_params = {

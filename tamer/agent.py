@@ -205,6 +205,8 @@ class TamerRL:
         # episode log path
         episode_log_path = os.path.join(
             self.logs_dir, "episode", f'{self.uuid}.csv')
+        self.gif_log_path = os.path.join(
+            self.logs_dir, "gifs", f'{self.uuid}.gif')
 
         # Logger
         self.logger = Logger(episode_log_path, tamer_log_path, log_csv=True)
@@ -367,7 +369,7 @@ class TamerRL:
 
         # only saves gif of the last run
         if save_gif:
-            imageio.mimsave(gif_name, frames, fps=30)
+            imageio.mimsave(self.gif_log_path, frames, fps=30)
         return ep_rewards
 
     def evaluate(self, n_episodes=100):

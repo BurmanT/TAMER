@@ -1,3 +1,10 @@
+# Running TAMER
+1. Create virtual environment:
+`conda create -n myenv python=3.9`
+2. Install dependencies: 
+`pip install -r requirements.txt`
+
+
 # TAMER
 TAMER (Training an Agent Manually via Evaluative Reinforcement) is a framework for human-in-the-loop Reinforcement Learning, proposed by [Knox + Stone](http://www.cs.utexas.edu/~sniekum/classes/RLFD-F16/papers/Knox09.pdf) in 2009. 
 

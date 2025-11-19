@@ -16,6 +16,14 @@ from gymnasium import spaces
 MODELS_DIR = Path(__file__).parent.joinpath('tamer/saved_models')
 LOGS_DIR = Path(__file__).parent.joinpath('tamer/logs')
 
+# Create necessary directories if they don't exist
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+(LOGS_DIR / 'episode').mkdir(exist_ok=True)
+(LOGS_DIR / 'tamer').mkdir(exist_ok=True)
+(LOGS_DIR / 'gifs').mkdir(exist_ok=True)
+
+
 
 async def main():
     # Experiment params
@@ -74,11 +82,11 @@ async def main():
         "h_model_to_load": None
     }
 
-    agent = TamerRL(**cp_agent_config)
+    #agent = TamerRL(**cp_agent_config)
+    agent = TamerRL(**mc_agent_config)
 
-    await agent.train(model_file_to_save="500eps_cp.p", eval=True, eval_interval=50)
-    # agent.play(n_episodes=3, render=True, save_gif=True,
-    #            gif_name="500ep_cartpole_disc0.99.gif")
+    await agent.train(model_file_to_save="500eps_mc.p", eval=True, eval_interval=50)
+    agent.play(n_episodes=3, render=True, save_gif=True)
     # agent.evaluate(n_episodes=30)
 
 
