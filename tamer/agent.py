@@ -160,8 +160,24 @@ class TamerRL:
         logs_dir=LOGS_DIR,  # output directory for logs
         models_dir=MODELS_DIR,  # output directory for models
         q_model_to_load=None,  # filename of pretrained Q model
-        h_model_to_load=None  # filename of pretrained H model
+        h_model_to_load=None,  # filename of pretrained H model
+        PREF_TRAJECTORY=False,  # Reward function being used
+        PREF_PARAMS=None  ### Dictionary {"user_weights":[], "mean": [],"std": []} ###
     ):
+        ##########################################
+        #### PREFERENCE TRAJECTORY FLAG ADDED ####
+        self.PREF_TRAJECTORY = PREF_TRAJECTORY
+        #self.pref_user_weights = np.array([-0.28493522,  0.72942661,  0.62189126])
+        self.pref_user_weights = np.array(PREF_PARAMS["user_weights"], dtype=float) if PREF_PARAMS is not None else None
+        # print(self.pref_user_weights)
+        self.pref_mean = np.array(PREF_PARAMS["mean"], dtype=float) if PREF_PARAMS is not None else None
+        # print(self.pref_mean)
+        self.pref_std = np.array(PREF_PARAMS["std"], dtype=float) if PREF_PARAMS is not None else None
+        # print(self.pref_std)
+        self.traj = [] # traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+        self.prev_reward = 0  # previous x_t value for reward calculation
+        ##########################################
+        
         self.ts_len = ts_len
         self.env = env
         self.uuid = uuid.uuid4()
@@ -210,6 +226,32 @@ class TamerRL:
 
         # Logger
         self.logger = Logger(episode_log_path, tamer_log_path, log_csv=True)
+    
+    def feature_func(self,traj):
+        """ Returns the features of the given MountainCar trajectory, i.e. \Phi(traj).
+
+        Args:
+            traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+
+        Returns:
+            features: a numpy vector corresponding the features of the trajectory
+        """
+        states = np.array([pair[0] for pair in traj])
+        actions = np.array([pair[1] for pair in traj[:-1]])
+        min_pos, max_pos = states[:,0].min(), states[:,0].max()
+        mean_speed = np.abs(states[:,1]).mean()
+        return (np.array([min_pos, max_pos, mean_speed]) - self.pref_mean) / self.pref_std
+    
+    def get_reward_from_pref_trajectory(self):
+        """ Returns the reward for the current trajectory based on the preference trajectory """
+        # print("Calculating reward from preference trajectory")
+        # print("traj length:", len(self.traj))
+        # print("trajectory is:", self.traj)
+        features = self.feature_func(self.traj)
+        x_t = np.dot(self.pref_user_weights, features)
+        reward_t = x_t - self.prev_reward
+        self.prev_reward = x_t
+        return reward_t 
 
     def act(self, state, eval=False):
         """ Epsilon-greedy Policy """
@@ -253,6 +295,15 @@ class TamerRL:
             # Get next state and reward
             next_state, reward, done, truncated, info = self.env.step(
                 action)
+            
+            ##########################################
+            #### PREFERENCE TRAJECTORY FLAG ADDED ####
+            if self.PREF_TRAJECTORY:
+                self.traj.append((state, action))
+                reward = self.get_reward_from_pref_trajectory()
+                #print("PREF REWARD is "  , reward)
+                #key=input("Press any key to continue...")
+            ##########################################
 
             frame = self.env.render()
             disp.render(frame, action)
@@ -291,8 +342,13 @@ class TamerRL:
 
             tot_reward += reward
             if done or ts >= self.max_steps-1:
-                print(f'Reward: {tot_reward}')
+                print(f'Steps: {ts} Reward: {tot_reward}')
                 ep_end_time = dt.datetime.now().time()
+                ##########################################
+                #### PREFERENCE TRAJECTORY FLAG ADDED ####
+                self.traj = [] # traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+                self.prev_reward = 0  # previous x_t value for reward calculation
+                ##########################################
                 return ep_start_time, ep_end_time, tot_reward
 
             stdout.write('\b' * (len(str(ts)) + 1))
@@ -300,6 +356,7 @@ class TamerRL:
         print(f'Steps: {ts}')
         # Decay epsilon
         if self.epsilon > self.min_eps:
+            print(f'Decaying epsilon from {self.epsilon:.4f} to ', end='')
             self.epsilon -= self.epsilon_step
         print("-----------------------")
 
@@ -351,10 +408,19 @@ class TamerRL:
             state, _ = self.env.reset()
             done = False
             tot_reward = 0
+            play_traj = []
+            prev_reward = 0
             for i in count():
                 action = self.act(state, eval=True)
                 next_state, reward, done, truncated, info = self.env.step(
                     action)
+                if self.PREF_TRAJECTORY:
+                    play_traj.append((state, action))
+                    features = self.feature_func(play_traj)
+                    x_t = np.dot(self.pref_user_weights, features)
+                    reward_t = x_t - prev_reward
+                    prev_reward = x_t
+                    reward = reward_t
                 tot_reward += reward
                 frames.append(self.env.render())
                 if render:
