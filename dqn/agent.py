@@ -75,6 +75,8 @@ class DQNAgent:
         gif_name="agent.gif",
         render=True,
         tamer=False,
+        PREF_TRAJECTORY=False,  # PREF TRAJECTORY REWARD FUNCTION USED
+        PREF_PARAMS=None  ### Dictionary {"user_weights":[], "mean": [],"std": []} ###
     ):
         """ Initializes a DQN Agent
 
@@ -101,6 +103,20 @@ class DQNAgent:
             render (bool, optional): renders environment. Defaults to True.
             tamer (bool, optional): allow human feedback. Defaults to False.
         """
+        ##########################################
+        #### PREFERENCE TRAJECTORY FLAG ADDED ####
+        self.PREF_TRAJECTORY = PREF_TRAJECTORY
+        #self.pref_user_weights = np.array([-0.28493522,  0.72942661,  0.62189126])
+        self.pref_user_weights = np.array(PREF_PARAMS["user_weights"], dtype=float) if PREF_PARAMS is not None else None
+        # print(self.pref_user_weights)
+        self.pref_mean = np.array(PREF_PARAMS["mean"], dtype=float) if PREF_PARAMS is not None else None
+        # print(self.pref_mean)
+        self.pref_std = np.array(PREF_PARAMS["std"], dtype=float) if PREF_PARAMS is not None else None
+        self.env_type = PREF_PARAMS["env_type"] if PREF_PARAMS is not None else None ### {0: "MountainCar", 1: "CartPole", 2: "LunarLander"} ###
+        # print(self.pref_std)
+        self.traj = [] # traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+        self.prev_reward = 0  # previous x_t value for reward calculation
+        ##########################################
         self.env = env
         self.env.reset()
         self.num_episodes = num_episodes
@@ -169,6 +185,69 @@ class DQNAgent:
 
         # Logger
         self.logger = Logger(episode_log_path, tamer_log_path, log_csv=True)
+    
+    def feature_func(self, traj):
+        """Returns the features of the given trajectory, i.e. \Phi(traj).
+        
+        Args:
+            traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+        
+        Returns:
+            features: a numpy vector corresponding the features of the trajectory
+        """
+        states = []
+        # print("Trajectory is ")
+        # print(traj)
+        for i in range(len(traj)):
+            # Handle different types of state representations
+            state = traj[i][0]
+            if isinstance(state, tuple):
+                # If it's a tuple, extract the first element
+                state = state[0]
+            
+            # Convert PyTorch tensor to numpy array if needed
+            if hasattr(state, 'detach'):  # PyTorch tensor
+                state = state.detach().cpu().numpy().flatten()
+            elif hasattr(state, 'shape'):  # NumPy array
+                state = state.flatten()
+            
+            states.append(state)
+        
+        # print("States extracted are ")
+        # print(states)
+        
+        # Convert list of arrays to 2D numpy array
+        states = np.vstack(states)
+        # print("States converted are ")
+        # print(states)
+        # key=input("Press any key to continue...")
+        # {0: "MountainCar", 1: "CartPole", 2: "LunarLander"}
+        ##### Lunar Lander features #####
+        if(self.env_type == 2):
+            x, y, x_vel, y_vel, theta, theta_vel, left, right = states.T
+            distance = np.sqrt(x**2 + y**2)
+            speed = np.sqrt(x_vel**2 + y_vel**2)
+            contact = np.logical_or(left, right)
+
+            return(np.array([
+                np.mean(distance),          # average distance
+                np.mean(np.abs(theta)),     # average angle
+                np.mean(speed),             # average speed
+                distance[-1],               # final distance
+                speed[-1],                  # final speed
+                np.mean(contact.astype(float))  # leg contact ratio
+            ]) - self.pref_mean) / self.pref_std
+    
+    def get_reward_from_pref_trajectory(self):
+        """ Returns the reward for the current trajectory based on the preference trajectory """
+        # print("Calculating reward from preference trajectory")
+        # print("traj length:", len(self.traj))
+        # print("trajectory is:", self.traj)
+        features = self.feature_func(self.traj)
+        x_t = np.dot(self.pref_user_weights, features)
+        reward_t = x_t - self.prev_reward
+        self.prev_reward = x_t
+        return reward_t 
 
     def act(self, state, eval=False):
         if random.random() > self.epsilon:
@@ -327,6 +406,14 @@ class DQNAgent:
             # Get next state and reward
             observation, reward, terminated, truncated, info = self.env.step(
                 action.item())
+            ##########################################
+            #### PREFERENCE TRAJECTORY FLAG ADDED ####
+            if self.PREF_TRAJECTORY:
+                self.traj.append((state, action))
+                reward = self.get_reward_from_pref_trajectory()
+                #print("PREF REWARD is "  , reward)
+                #key=input("Press any key to continue...")
+            ##########################################
             total_reward += reward
             reward = torch.tensor([reward])
             done = terminated or (
@@ -376,6 +463,11 @@ class DQNAgent:
             self.alpha_h *= self.alpha_h_decay
 
             if done:
+                ##########################################
+                #### PREFERENCE TRAJECTORY FLAG ADDED ####
+                self.traj = [] # traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+                self.prev_reward = 0  # previous x_t value for reward calculation
+                ##########################################
                 ep_end_time = dt.datetime.now().time()
                 return ep_start_time, ep_end_time, total_reward
 
@@ -397,10 +489,22 @@ class DQNAgent:
             state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
             done = False
             tot_reward = 0
+            play_traj = []
+            prev_reward = 0
             for i in count():
                 action = self.act(state, eval=True)
                 observation, reward, terminated, truncated, info = self.env.step(
                     action.item())
+                ##########################################
+                #### PREFERENCE TRAJECTORY FLAG ADDED ####
+                if self.PREF_TRAJECTORY:
+                    play_traj.append((state, action))
+                    features = self.feature_func(play_traj)
+                    x_t = np.dot(self.pref_user_weights, features)
+                    reward_t = x_t - prev_reward
+                    prev_reward = x_t
+                    reward = reward_t
+                ##########################################
                 done = truncated or terminated
                 next_state = torch.tensor(
                     observation, dtype=torch.float32).unsqueeze(0)

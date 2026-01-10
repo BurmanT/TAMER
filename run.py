@@ -59,7 +59,7 @@ async def main():
     cp_params = HYPERPARAMS["CartPole-v1"]
     cp_params["trace_scaling"] = 1 if control_sharing else 200
 
-    CP_PREF_PARAMS = HYPERPARAMS["CartPole-v1"]
+    CP_PREF_PARAMS = PREF_WEIGHTS["CartPole-v1"]
 
     cp_agent_config = {
         **cp_params,
@@ -78,7 +78,7 @@ async def main():
     # Lunar Lander
     ll_env = gym.make("LunarLander-v3", continuous=False, gravity=-10.0,
                       enable_wind=False, wind_power=15.0, turbulence_power=1.5, render_mode="rgb_array")
-    ll_params = HYPERPARAMS["LunarLander-v3"]
+    ll_params = PREF_WEIGHTS["LunarLander-v3"]
     ll_agent_config = {
         **ll_params,
         "env": ll_env,
@@ -94,7 +94,7 @@ async def main():
     agent = TamerRL(**cp_agent_config)
     #agent = TamerRL(**mc_agent_config)
 
-    await agent.train(model_file_to_save="100eps_cp_pref_learning.p", eval=True, eval_interval=20)
+    await agent.train(model_file_to_save="100eps_cp_pref_learning_200ts.p", eval=True, eval_interval=20)
     agent.play(n_episodes=3, render=True, save_gif=True)
     # agent.evaluate(n_episodes=30)
 

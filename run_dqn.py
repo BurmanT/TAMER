@@ -5,7 +5,7 @@ from BlackJackObservationWrapper import BlackjackContinuousWrapper
 from OneHotObservationWrapper import OneHotObservationWrapper
 from dqn.agent import DQNAgent
 from dqn.configs import HYPERPARAMS
-
+from dqn.configs import PREF_WEIGHTS
 # Create necessary directories if they don't exist
 DQN_LOGS_DIR = Path(__file__).parent.joinpath('dqn/logs')
 DQN_LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -28,23 +28,36 @@ def main():
     #     render_mode="rgb_array"))
     #lake_action_map = {0: 'left', 1: 'down', 2: 'right', 3: 'up'}
 
+    # regular LunarLander env 
+    # agent = DQNAgent(
+    #     **HYPERPARAMS['LunarLander-v3'],
+    #     num_episodes=500,
+    #     ts_len=0,
+    #     q_model_to_load=None,
+    #     h_model_to_load=None,
+    #     gif_name="jan_dqn_ll_500eps.gif",
+    #     render=True,
+    #     tamer=False)
+
     agent = DQNAgent(
         **HYPERPARAMS['LunarLander-v3'],
-        num_episodes=500,
+        num_episodes=100,
         ts_len=0,
         q_model_to_load=None,
         h_model_to_load=None,
-        gif_name="dqn_ll_500eps.gif",
+        gif_name="jan_pref_learning_dqn_lunarlander_100eps.gif",
         render=True,
-        tamer=False)
+        tamer=False,
+        PREF_TRAJECTORY= True,
+        PREF_PARAMS= PREF_WEIGHTS['LunarLander-v3'])
 
     # this already saves the gif after training 
     agent.train(
-        name="DQN LunarLander 500 eps",
-        q_model_file_to_save="q_dqntamer_ll_500eps.pth",
-        h_model_file_to_save="h_dqntamer_ll_5eps.pth",
+        name="DQN LunarLander 100 eps Preference Learning",
+        q_model_file_to_save="pref_q_dqntamer_ll_100eps.pth",
+        h_model_file_to_save="pref_h_dqntamer_ll_100eps.pth",
         eval=True,
-        eval_interval=5
+        eval_interval=20
     )
     #agent.play(n_episodes=1, render=True, save_gif=True,
     #            gif_name="ll_dqn_500eps.gif")

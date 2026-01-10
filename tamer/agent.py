@@ -161,7 +161,7 @@ class TamerRL:
         models_dir=MODELS_DIR,  # output directory for models
         q_model_to_load=None,  # filename of pretrained Q model
         h_model_to_load=None,  # filename of pretrained H model
-        PREF_TRAJECTORY=False,  # Reward function being used
+        PREF_TRAJECTORY=False,  # PREF TRAJECTORY REWARD FUNCTION USED
         PREF_PARAMS=None  ### Dictionary {"user_weights":[], "mean": [],"std": []} ###
     ):
         ##########################################
@@ -173,6 +173,7 @@ class TamerRL:
         self.pref_mean = np.array(PREF_PARAMS["mean"], dtype=float) if PREF_PARAMS is not None else None
         # print(self.pref_mean)
         self.pref_std = np.array(PREF_PARAMS["std"], dtype=float) if PREF_PARAMS is not None else None
+        self.env_type = PREF_PARAMS["env_type"] if PREF_PARAMS is not None else None ### {0: "MountainCar", 1: "CartPole", 2: "LunarLander"} ###
         # print(self.pref_std)
         self.traj = [] # traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
         self.prev_reward = 0  # previous x_t value for reward calculation
@@ -227,20 +228,76 @@ class TamerRL:
         # Logger
         self.logger = Logger(episode_log_path, tamer_log_path, log_csv=True)
     
-    def feature_func(self,traj):
-        """ Returns the features of the given MountainCar trajectory, i.e. \Phi(traj).
-
+    def feature_func(self, traj):
+        """Returns the features of the given trajectory, i.e. \Phi(traj).
+        
         Args:
             traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
-
+        
         Returns:
             features: a numpy vector corresponding the features of the trajectory
         """
-        states = np.array([pair[0] for pair in traj])
-        actions = np.array([pair[1] for pair in traj[:-1]])
-        min_pos, max_pos = states[:,0].min(), states[:,0].max()
-        mean_speed = np.abs(states[:,1]).mean()
-        return (np.array([min_pos, max_pos, mean_speed]) - self.pref_mean) / self.pref_std
+        states = []
+        for i in range(len(traj)):
+            # first element is a tuple of (numpy.ndarray, {}) for some reason 
+            if isinstance(traj[i][0], tuple):
+                # only append the numpy.ndarray
+                states.append(traj[i][0][0])
+            else:
+                states.append(traj[i][0])
+        states = np.array(states)
+
+        # {0: "MountainCar", 1: "CartPole", 2: "LunarLander"}
+
+        ##### Mountain Car features #####
+        if(self.env_type == 0):
+            min_pos, max_pos = states[:,0].min(), states[:,0].max()
+            mean_speed = np.abs(states[:,1]).mean()
+            return (np.array([min_pos, max_pos, mean_speed]) - self.pref_mean) / self.pref_std
+        
+        ##### CartPole features #####
+        elif(self.env_type == 1):
+            x, x_dot, theta, theta_dot = states.T
+            return(np.array([
+                np.mean(np.abs(theta)),     # 1. average pole angle
+                np.max(np.abs(theta)),      # 2. max pole angle
+                np.mean(np.abs(x)),         # 3. average cart position
+                np.max(np.abs(x)),          # 4. max cart displacement
+                np.mean(np.abs(theta_dot)), # 5. average angular velocity
+                np.mean(np.abs(x_dot)),     # 6. average cart velocity
+            ]) - self.pref_mean) / self.pref_std
+        
+        ##### Lunar Lander features #####
+        elif(self.env_type == 2):
+            x, y, x_vel, y_vel, theta, theta_vel, left, right = states.T
+            distance = np.sqrt(x**2 + y**2)
+            speed = np.sqrt(x_vel**2 + y_vel**2)
+            contact = np.logical_or(left, right)
+
+            return(np.array([
+                np.mean(distance),          # average distance
+                np.mean(np.abs(theta)),     # average angle
+                np.mean(speed),             # average speed
+                distance[-1],               # final distance
+                speed[-1],                  # final speed
+                np.mean(contact.astype(float))  # leg contact ratio
+            ]) - self.pref_mean_vec) / self.pref_std_vec
+
+    
+    # def feature_func(self,traj):
+    #     """ Returns the features of the given MountainCar trajectory, i.e. \Phi(traj).
+
+    #     Args:
+    #         traj: List of state-action tuples, e.g. [(state0, action0), (state1, action1), ...]
+
+    #     Returns:
+    #         features: a numpy vector corresponding the features of the trajectory
+    #     """
+    #     states = np.array([pair[0] for pair in traj])
+    #     actions = np.array([pair[1] for pair in traj[:-1]])
+    #     min_pos, max_pos = states[:,0].min(), states[:,0].max()
+    #     mean_speed = np.abs(states[:,1]).mean()
+    #     return (np.array([min_pos, max_pos, mean_speed]) - self.pref_mean) / self.pref_std
     
     def get_reward_from_pref_trajectory(self):
         """ Returns the reward for the current trajectory based on the preference trajectory """
@@ -414,6 +471,8 @@ class TamerRL:
                 action = self.act(state, eval=True)
                 next_state, reward, done, truncated, info = self.env.step(
                     action)
+                ##########################################
+                #### PREFERENCE TRAJECTORY FLAG ADDED ####
                 if self.PREF_TRAJECTORY:
                     play_traj.append((state, action))
                     features = self.feature_func(play_traj)
@@ -421,6 +480,7 @@ class TamerRL:
                     reward_t = x_t - prev_reward
                     prev_reward = x_t
                     reward = reward_t
+                ##########################################
                 tot_reward += reward
                 frames.append(self.env.render())
                 if render:
